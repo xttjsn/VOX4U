@@ -42,7 +42,6 @@ bool UVoxelFactory::DoesSupportClass(UClass * Class)
 {
 	return Class == UStaticMesh::StaticClass()
 		|| Class == USkeletalMesh::StaticClass()
-		|| Class == UDestructibleMesh::StaticClass()
 		|| Class == UVoxel::StaticClass();
 }
 
@@ -53,8 +52,6 @@ UClass* UVoxelFactory::ResolveSupportedClass()
 		Class = UStaticMesh::StaticClass();
 	} else if (ImportOption->VoxImportType == EVoxImportType::SkeletalMesh) {
 		Class = USkeletalMesh::StaticClass();
-	} else if (ImportOption->VoxImportType == EVoxImportType::DestructibleMesh) {
-		Class = UDestructibleMesh::StaticClass();
 	} else if (ImportOption->VoxImportType == EVoxImportType::Voxel) {
 		Class = UVoxel::StaticClass();
 	}
@@ -78,9 +75,6 @@ UObject* UVoxelFactory::FactoryCreateBinary(UClass* InClass, UObject* InParent, 
 			break;
 		case EVoxImportType::SkeletalMesh:
 			Result = CreateSkeletalMesh(InParent, InName, Flags, &Vox);
-			break;
-		case EVoxImportType::DestructibleMesh:
-			Result = CreateDestructibleMesh(InParent, InName, Flags, &Vox);
 			break;
 		case EVoxImportType::Voxel:
 			Result = CreateVoxel(InParent, InName, Flags, &Vox);
@@ -192,7 +186,7 @@ UStaticMesh* UVoxelFactory::CreateStaticMesh(UObject* InParent, FName InName, EO
 	FRawMesh RawMesh;
 	Vox->CreateOptimizedRawMesh(RawMesh, ImportOption);
 	UMaterialInterface* Material = CreateMaterial(InParent, InName, Flags, Vox);
-	StaticMesh->StaticMaterials.Add(FStaticMaterial(Material));
+	StaticMesh->GetStaticMaterials().Add(FStaticMaterial(Material));
 	BuildStaticMesh(StaticMesh, RawMesh);
 	StaticMesh->AssetImportData->Update(Vox->Filename);
 	return StaticMesh;
@@ -209,47 +203,6 @@ USkeletalMesh* UVoxelFactory::CreateSkeletalMesh(UObject* InParent, FName InName
 
 	SkeletalMesh->AssetImportData->Update(Vox->Filename);
 	return SkeletalMesh;
-}
-
-/**
- * CreateDestructibleMesh
- * @param InParent Import package
- * @param InName Package name
- * @param Flags Import flags
- * @param Vox Voxel file data
- */
-UDestructibleMesh* UVoxelFactory::CreateDestructibleMesh(UObject* InParent, FName InName, EObjectFlags Flags, const FVox* Vox) const
-{
-	UDestructibleMesh* DestructibleMesh = NewObject<UDestructibleMesh>(InParent, InName, Flags | RF_Public);
-	if (!DestructibleMesh->AssetImportData || !DestructibleMesh->AssetImportData->IsA<UVoxAssetImportData>()) {
-		auto AssetImportData = NewObject<UVoxAssetImportData>(DestructibleMesh);
-		AssetImportData->FromVoxImportOption(*ImportOption);
-		DestructibleMesh->AssetImportData = AssetImportData;
-	}
-
-	FRawMesh RawMesh;
-	Vox->CreateOptimizedRawMesh(RawMesh, ImportOption);
-	UMaterialInterface* Material = CreateMaterial(InParent, InName, Flags, Vox);
-	UStaticMesh* RootMesh = NewObject<UStaticMesh>();
-	RootMesh->StaticMaterials.Add(FStaticMaterial(Material));
-	BuildStaticMesh(RootMesh, RawMesh);
-	DestructibleMesh->SourceStaticMesh = RootMesh;
-
-	TArray<FRawMesh> CellMeshes;
-	Vox->CreateRawMeshes(CellMeshes, ImportOption);
-	TArray<UStaticMesh*> FractureMeshes;
-	for (FRawMesh& CellMesh : CellMeshes) {
-		UStaticMesh* FructureMesh = NewObject<UStaticMesh>();
-		FructureMesh->StaticMaterials.Add(FStaticMaterial(Material));
-		BuildStaticMesh(FructureMesh, CellMesh);
-		FractureMeshes.Add(FructureMesh);
-	}
-	DestructibleMesh->SetupChunksFromStaticMeshes(FractureMeshes);
-	BuildDestructibleMeshFromFractureSettings(*DestructibleMesh, nullptr);
-	DestructibleMesh->SourceStaticMesh = nullptr;
-	DestructibleMesh->AssetImportData->Update(Vox->Filename);
-
-	return DestructibleMesh;
 }
 
 UVoxel* UVoxelFactory::CreateVoxel(UObject* InParent, FName InName, EObjectFlags Flags, const FVox* Vox) const
@@ -286,12 +239,12 @@ UVoxel* UVoxelFactory::CreateVoxel(UObject* InParent, FName InName, EObjectFlags
 		FRawMesh RawMesh;
 		FVox::CreateMesh(RawMesh, ImportOption);
 		UStaticMesh* StaticMesh = NewObject<UStaticMesh>(InParent, *FString::Printf(TEXT("%s_SM%d"), *InName.GetPlainNameString(), color), Flags | RF_Public);
-		StaticMesh->StaticMaterials.Add(FStaticMaterial(MaterialInstance));
+		StaticMesh->GetStaticMaterials().Add(FStaticMaterial(MaterialInstance));
 		BuildStaticMesh(StaticMesh, RawMesh);
 
 		const FVector& Scale = ImportOption->GetBuildSettings().BuildScale3D;
 		FKBoxElem BoxElem(Scale.X, Scale.Y, Scale.Z);
-		StaticMesh->BodySetup->AggGeom.BoxElems.Add(BoxElem);
+		StaticMesh->GetBodySetup()->AggGeom.BoxElems.Add(BoxElem);
 
 		Voxel->Mesh.Add(StaticMesh);
 	}
